@@ -1,6 +1,6 @@
 # Importing the required modules
 from dataclasses import dataclass
-from typing import Union, List, Optional
+from typing import Union, List, Optional, assert_never
 import re
 import argparse
 
@@ -22,7 +22,7 @@ Result = Union[Ok, Err]
 # Defining the Utterance Union type
 @dataclass
 class Word:
-    text: str
+    word: str
 
 @dataclass
 class Punctuation:
@@ -50,24 +50,14 @@ transcript = """
 
             F: What? <2> What did you say?? Hello??
 
-            A: Back to me!!
+            ALPH: Back to me!!
+
+            B: Where??
 """
 
 # Defining the regex pattern for tokenizing the transcript
 pattern = re.compile(r"""
-    (?P<speaker>[A-Z]):\s+ # Match the speaker name followed by a colon and whitespace
-    (?P<utterances>        # Match the utterances group
-        (?:                # Start a non-capturing group
-            \w+            # Match one or more word characters
-            |              # Or
-            [.,?!]         # Match one punctuation character
-            |              # Or
-            <\d+\.?\d*>    # Match a pause in angle brackets
-        )+                 # Repeat the non-capturing group one or more times
-    )                      # End the utterances group
-    \s*                    # Match zero or more whitespace characters
-    (?P<punctuation>)[.,?!]
-    (?P<)
+(?P<speaker>[A-Z]+)(?=:)|(?P<word>\w+)(?!:)|(?P<punctuation>[.,?!'\-\"])|(?P<pause><\d+\.?\d*>)
 """, re.VERBOSE)
 
 # Defining the function that returns a linked-list of Subject types
@@ -76,54 +66,43 @@ def parse_transcript(transcript: str) -> Result:
     subjects = []
 
     # Iterate over the matches of the pattern in the transcript
-    for match in pattern.finditer(transcript):
-        # Extract the speaker and the utterances from the match
-        speaker = match.group("speaker")
-        utterances = match.group("utterances")
+    # for match in pattern.finditer(transcript):
+    speaker = None
+    utterance_list = []
+    matches = pattern.finditer(transcript)
+    for m in matches:
+        match m.lastgroup:
+            case "speaker":
+                if args.verbose:
+                    print(f"Speaker found: {m.group()}")
+                # Set first speaker
+                if not speaker:
+                    speaker = m.group()
+                # Flush otherwise
+                else:
+                    # Create a Subject instance with the speaker and the utterance list
+                    subject = Subject(speaker, utterance_list.copy(), None)
+                    utterance_list.clear()
 
-        # Initialize an empty list to store the utterances
-        utterance_list = []
-
-        # Iterate over the characters in the utterances
-        for char in utterances:
-            # Check if the character is alphanumerical character
-            if char.isalnum():
-                # Append a Word instance to the utterance list
-                utterance_list.append(Word(char))
-            # Check if the character is a punctuation character
-            elif char in [".", ",", "?", "!"]:
-                # Append a Punctuation instance to the utterance list
-                utterance_list.append(Punctuation(char))
-            # Check if the character is an opening angle bracket
-            elif char == "<":
-                # Initialize an empty string to store the pause duration
-                pause = ""
-                # Increment the index to skip the opening angle bracket
-                index = utterances.index(char) + 1
-                # Loop until the closing angle bracket is found
-                while utterances[index] != ">":
-                    # Append the character to the pause string
-                    pause += utterances[index]
-                    # Increment the index
-                    index += 1
-                # Convert the pause string to a float
-                pause = float(pause)
-                # Append a Pause instance to the utterance list
-                utterance_list.append(Pause(pause))
-
-        # Create a Subject instance with the speaker and the utterance list
-        subject = Subject(speaker, utterance_list, None)
-
-        # Check if the subjects list is empty
-        if not subjects:
-            # Append the subject to the subjects list
-            subjects.append(subject)
-        else:
-            # Set the next attribute of the last subject in the subjects list to the current subject
-            subjects[-1].next = subject
-            # Append the subject to the subjects list
-            subjects.append(subject)
-
+                    # Check if the subjects list is empty
+                    if not subjects:
+                        # Append the subject to the subjects list
+                        subjects.append(subject)
+                    else:
+                        # Set the next attribute of the last subject in the subjects list to the current subject
+                        subjects[-1].next = subject
+                        # Append the subject to the subjects list
+                        subjects.append(subject)
+                    speaker = m.group()
+            case "word":
+                if args.verbose:
+                    print(f"Appending {m.group()} to {speaker}")
+                utterance_list.append(Word(m.group()))
+            case "punctuation":
+                if args.verbose:
+                    print(f"Appending {m.group()} to {speaker}")
+                utterance_list.append(Punctuation(m.group()))
+            
     # Check if the subjects list is not empty
     if subjects:
         # Return the first subject in the subjects list as the head of the linked-list
@@ -146,7 +125,7 @@ def print_subjects(subject: Subject) -> None:
             # Check if the utterance is a Word instance
             if isinstance(utterance, Word):
                 # Append the word text to the text
-                text += utterance.text
+                text += utterance.word 
             # Check if the utterance is a Punctuation instance
             elif isinstance(utterance, Punctuation):
                 # Append the punctuation symbol to the text
@@ -163,9 +142,18 @@ def print_subjects(subject: Subject) -> None:
     # Print the text
     print(text)
 
+parser = argparse.ArgumentParser(
+    prog="tulk.py",
+    description="Interprets transcripted logs between multiple parties!",
+)
+
+#parser.add_argument('filename(s)')# positional argument
+parser.add_argument('-v', '--verbose', action='store_true')# on/off flag
+args = parser.parse_args()
+
 # Testing the functions
 result = parse_transcript(transcript)
 if isinstance(result, Ok):
     print_subjects(result.value)
 else:
-    print(result.error)
+    print(result)

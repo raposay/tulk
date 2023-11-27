@@ -4,43 +4,64 @@ from typing import Union, List, Optional, assert_never
 import re
 import argparse
 
+
 # Defining the Result Union type
 @dataclass
 class Ok:
     value: any
+
     def __repr__(self):
         return self.value
+
 
 @dataclass
 class Err:
     error: str
+
     def __str__(self):
         return "ERROR: " + self.error
 
+
+# What? - An object of type Result can either be an Ok or Err type.
+# Why? - I like to define a Result type to handle
+# whether a function returns a value or an error.
 Result = Union[Ok, Err]
+
 
 # Defining the Utterance Union type
 @dataclass
 class Word:
     word: str
 
+    def __str__(self):
+        return f"{self.word}"
+
+
 @dataclass
 class Punctuation:
     symbol: str
+    # Is . or ! or ? or ,
+    isHard: bool
+
+    def __str__(self):
+        return f"{self.symbol}"
+
 
 @dataclass
 class Pause:
     duration: float
 
+
 # An Utterance can either be a Word OR Punctuation OR Pause
 Utterance = Union[Word, Punctuation, Pause]
 
+
 # Defining the Subject dataclass
 @dataclass
-class Subject:
+class Line:
     speaker: str
     utterances: List[Utterance]
-    next: Optional['Subject']
+
 
 # Defining the transcript
 transcript = """
@@ -48,7 +69,7 @@ transcript = """
 
             B: And who are you? and -
 
-            F: What? <2> What did you say?? Hello??
+            F: What? <2.5> What did you say?? Hello??
 
             ALPH: Back to me!!
 
@@ -56,104 +77,122 @@ transcript = """
 """
 
 # Defining the regex pattern for tokenizing the transcript
-pattern = re.compile(r"""
-(?P<speaker>[A-Z]+)(?=:)|(?P<word>\w+)(?!:)|(?P<punctuation>[.,?!'\-\"])|(?P<pause><\d+\.?\d*>)
-""", re.VERBOSE)
+# https://regex101.com/r/gs5Y38/1
+pattern = re.compile(
+    r"""
+(?P<speaker>[a-zA-Z]+)(?=:)|
+(?<=<)(?P<pause>\d\.?\d*)(?=>)|
+(?P<word>\w+)(?!:)|
+(?P<puncHard>[.?!,])|
+(?P<puncSoft>['\-\"])
+    """,
+    re.VERBOSE,
+)
+
 
 # Defining the function that returns a linked-list of Subject types
 def parse_transcript(transcript: str) -> Result:
-    # Initialize an empty list to store the subjects
-    subjects = []
+    # Initialize an empty list that should contain only Subject types
+    lineList = []
 
     # Iterate over the matches of the pattern in the transcript
     # for match in pattern.finditer(transcript):
-    speaker = None
-    utterance_list = []
+    speaker: str = None
+    utteranceList = []
     matches = pattern.finditer(transcript)
     for m in matches:
         match m.lastgroup:
             case "speaker":
                 if args.verbose:
-                    print(f"Speaker found: {m.group()}")
+                    print(f"\nSpeaker found: {m.group()}")
                 # Set first speaker
                 if not speaker:
                     speaker = m.group()
                 # Flush otherwise
                 else:
                     # Create a Subject instance with the speaker and the utterance list
-                    subject = Subject(speaker, utterance_list.copy(), None)
-                    utterance_list.clear()
+                    aLine = Line(speaker, utteranceList.copy())
+                    utteranceList.clear()
 
-                    # Check if the subjects list is empty
-                    if not subjects:
-                        # Append the subject to the subjects list
-                        subjects.append(subject)
-                    else:
-                        # Set the next attribute of the last subject in the subjects list to the current subject
-                        subjects[-1].next = subject
-                        # Append the subject to the subjects list
-                        subjects.append(subject)
+                    # Append the subject to the subjects list
+                    lineList.append(aLine)
                     speaker = m.group()
+
             case "word":
                 if args.verbose:
                     print(f"Appending {m.group()} to {speaker}")
-                utterance_list.append(Word(m.group()))
-            case "punctuation":
+                utteranceList.append(Word(m.group()))
+            case "puncHard":
                 if args.verbose:
                     print(f"Appending {m.group()} to {speaker}")
-                utterance_list.append(Punctuation(m.group()))
-            
+                utteranceList.append(Punctuation(m.group(), True))
+            case "puncSoft":
+                if args.verbose:
+                    print(f"Appending {m.group()} to {speaker}")
+                utteranceList.append(Punctuation(m.group(), False))
+            case "pause":
+                if args.verbose:
+                    print(f"Appending {m.group()} to {speaker}")
+                utteranceList.append(Pause(float(m.group())))
+
     # Check if the subjects list is not empty
-    if subjects:
-        # Return the first subject in the subjects list as the head of the linked-list
-        return Ok(subjects[0])
+    if len(lineList) != 0:
+        # Return the subjects list in an Ok wrapper
+        # Flush last line
+        aLine = Line(speaker, utteranceList.copy())
+        lineList.append(aLine)
+        return Ok(lineList)
     else:
-        # Return an error message
+        # Return an error message in a Err wrapper
         return Err("No subjects found in the transcript.")
 
-# Defining the function that prints the Subject linked-list to human-readable text
-def print_subjects(subject: Subject) -> None:
-    # Initialize an empty string to store the text
-    text = ""
 
-    # Loop until the subject is None
-    while subject:
-        # Append the speaker name and a colon to the text
-        text += subject.speaker + ": "
-        # Iterate over the utterances in the subject
-        for utterance in subject.utterances:
-            # Check if the utterance is a Word instance
-            if isinstance(utterance, Word):
-                # Append the word text to the text
-                text += utterance.word 
-            # Check if the utterance is a Punctuation instance
-            elif isinstance(utterance, Punctuation):
-                # Append the punctuation symbol to the text
-                text += utterance.symbol
-            # Check if the utterance is a Pause instance
-            elif isinstance(utterance, Pause):
-                # Append the pause duration in angle brackets to the text
-                text += f"<{utterance.duration}>"
-        # Append a newline character to the text
+# Defining the function that prints the Subject linked-list to human-readable text
+def subjects_to_str(lines: List) -> str:
+    # Initialize an empty string to store the text
+    text: str = ""
+    lastUtter: Utterance = None
+
+    for line in lines:
+        text += f"{line.speaker}: "
+        for utterance in line.utterances:
+            match utterance:
+                case Word(word):
+                    # If hard punc before word, add a space before word
+                    if isinstance(lastUtter, Punctuation) and lastUtter.isHard:
+                        text += f" {word}"
+                    # If word before this word, add a space before this word
+                    elif isinstance(lastUtter, Word):
+                        text += f" {word}"
+                    # Otherwise do nothing
+                    else:
+                        text += f"{word}"
+                case Punctuation(symbol):
+                    text += f"{symbol}"
+                case Pause(duration):
+                    text += f" <{duration}> "
+            lastUtter = utterance
         text += "\n"
-        # Set the subject to the next subject in the linked-list
-        subject = subject.next
-    
-    # Print the text
-    print(text)
+        lastUtter = line
+    return text
+
 
 parser = argparse.ArgumentParser(
     prog="tulk.py",
     description="Interprets transcripted logs between multiple parties!",
 )
 
-#parser.add_argument('filename(s)')# positional argument
-parser.add_argument('-v', '--verbose', action='store_true')# on/off flag
+# parser.add_argument('filename(s)')# positional argument
+parser.add_argument("-v", "--verbose", action="store_true")  # on/off flag
+parser.add_argument("-t", "--tests", action="store_true")  # test all methods and exit
 args = parser.parse_args()
 
-# Testing the functions
-result = parse_transcript(transcript)
-if isinstance(result, Ok):
-    print_subjects(result.value)
-else:
-    print(result)
+if __name__ == "__main__":
+    if args.tests:
+        # Test the functions
+        result = parse_transcript(transcript)
+        if isinstance(result, Ok):
+            print(subjects_to_str(result.value))
+        else:
+            print(result)
+        exit()

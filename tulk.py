@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from typing import Union, List, Optional, assert_never
 from collections import defaultdict
+import os
 import re
 import argparse
 
@@ -66,6 +67,12 @@ class Line:
 
 # Defining the function that returns a linked-list of Subject types
 def parse_transcript(transcript: str) -> Result:
+    # default verbose
+    # check if running from main or import
+    if "args" not in globals():
+        verbose = False
+    else:
+        verbose = args.verbose
     # Defining the regex pattern for tokenizing the transcript
     # https://regex101.com/r/gs5Y38/1
     pattern = re.compile(
@@ -90,7 +97,7 @@ def parse_transcript(transcript: str) -> Result:
     for m in matches:
         match m.lastgroup:
             case "speaker":
-                if args.verbose:
+                if verbose:
                     print(f"\nSpeaker found: {m.group()}")
                 # Set first speaker
                 if not speaker:
@@ -106,19 +113,19 @@ def parse_transcript(transcript: str) -> Result:
                     speaker = m.group()
 
             case "word":
-                if args.verbose:
+                if verbose:
                     print(f"Appending {m.group()} to {speaker}")
                 utteranceList.append(Word(m.group()))
             case "puncHard":
-                if args.verbose:
+                if verbose:
                     print(f"Appending {m.group()} to {speaker}")
                 utteranceList.append(Punctuation(m.group(), True))
             case "puncSoft":
-                if args.verbose:
+                if verbose:
                     print(f"Appending {m.group()} to {speaker}")
                 utteranceList.append(Punctuation(m.group(), False))
             case "pause":
-                if args.verbose:
+                if verbose:
                     print(f"Appending {m.group()} to {speaker}")
                 utteranceList.append(Pause(float(m.group())))
 
@@ -168,7 +175,7 @@ def subjects_to_str(lines: List) -> str:
 
 
 # Define function to return a dict of wordCounts, given a speaker
-def word_count(lines: Line, targetSpeaker: str) -> dict:
+def count_words(lines: Line, targetSpeaker: str) -> dict:
     wordCount = defaultdict(int)
     for line in lines:
         # if guard
@@ -183,36 +190,26 @@ def word_count(lines: Line, targetSpeaker: str) -> dict:
     return dict(wordCount)
 
 
-parser = argparse.ArgumentParser(
-    prog="tulk.py",
-    description="Interprets transcripted logs between multiple parties!",
-)
-
-# parser.add_argument('filename(s)')# positional argument
-parser.add_argument("-v", "--verbose", action="store_true")  # on/off flag
-parser.add_argument("-t", "--tests", action="store_true")  # test all methods and exit
-args = parser.parse_args()
-
 if __name__ == "__main__":
-    if args.tests:
-        # Test the functions
-        # Defining the transcript
-        transcript = """
-                    A: Hello! Hello! Who is this? Nice, it's nice to see you.
+    # parse args
+    parser = argparse.ArgumentParser(
+        prog="tulk.py",
+        description="Interprets transcripted logs between multiple parties!",
+    )
 
-                    B: And who are you? and -
+    # parser.add_argument('filename(s)')# positional argument
+    parser.add_argument("-v", "--verbose", action="store_true")  # on/off flag
+    parser.add_argument("-c", "--count_words_of", type=str)  # pass in speaker name here
+    parser.add_argument("file", type=argparse.FileType("r"), nargs="+")
+    args = parser.parse_args()
 
-                    F: What? <2.5> What did you say?? Hello??
-
-                    ALPH: Back to me!!
-
-                    B: Where?? Egg-salad and ham!!
-        """
-        result = parse_transcript(transcript)
-        if isinstance(result, Ok):
-            print(subjects_to_str(result.value))
-        else:
-            print(result)
-        print(word_count(result.value, "A"))
-        print(word_count(result.value, "B"))
-        exit()
+    # open file(s)
+    for infile in args.file:
+        # f, e = os.path.splitext(infile)
+        # outfile = f + "_formatted" + e
+        data = infile.read()
+        transcript = parse_transcript(data)
+        print(subjects_to_str(transcript.value))
+        s = args.count_words_of
+        if s:
+            print(count_words(transcript.value, s))

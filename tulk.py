@@ -44,15 +44,28 @@ Punctuation = Union[PunctuationHard, PunctuationSoft]
 Utterance = Union[Word, Punctuation, Pause]
 
 
-# Defining the Subject dataclass
+# Defining the Line dataclass
 @dataclass
 class Line:
     speaker: str
     utterances: List[Utterance]
 
 
+@dataclass
+class Time:
+    time: str
+
+
+Element = Union[Line, Time]
+
+
+@dataclass
+class Transcript:
+    elements: List[Element]
+
+
 # Defining the function that returns a linked-list of Subject types
-def parse_transcript(transcript: str) -> List[Line]:
+def parse_transcript(inStr: str) -> List[Line]:
     # default verbose
     # check if running from main or import
     if "args" not in globals():
@@ -73,14 +86,14 @@ def parse_transcript(transcript: str) -> List[Line]:
         re.VERBOSE | re.MULTILINE,
     )
 
-    # Initialize an empty list that should contain only Subject types
-    lineList = []
+    # Initialize empty transcript object that should contain only Element types (either Line or Time)
+    transcript = Transcript([])
 
     # Iterate over the matches of the pattern in the transcript
     # for match in pattern.finditer(transcript):
     speaker: str = None
     utteranceList = []
-    matches = pattern.finditer(transcript)
+    matches = pattern.finditer(inStr)
     for m in matches:
         match m.lastgroup:
             case "speaker":
@@ -96,12 +109,13 @@ def parse_transcript(transcript: str) -> List[Line]:
                     utteranceList.clear()
 
                     # Append the subject to the subjects list
-                    lineList.append(aLine)
+                    transcript.elements.append(aLine)
                     speaker = m.group()
             case "time":
                 if verbose:
                     print(f"Appending {m.group()} to {speaker}")
-
+                aTime = Time(m.group())
+                transcript.elements.append(aTime)
             case "word":
                 if verbose:
                     print(f"Appending {m.group()} to {speaker}")
@@ -119,64 +133,70 @@ def parse_transcript(transcript: str) -> List[Line]:
                     print(f"Appending {m.group()} to {speaker}")
                 utteranceList.append(Pause(float(m.group())))
 
-    # Check if the subjects list is not empty
-    if len(lineList) != 0:
-        # Return the subjects list in an Ok wrapper
-        # Flush last line
-        aLine = Line(speaker, utteranceList.copy())
-        lineList.append(aLine)
-        return lineList
-    else:
+    # Check if the Transcript is empty (if guard)
+    if len(transcript.elements) == 0:
         # Return an error message in a Err wrapper
         raise Exception("No subjects found in the transcript.")
+    # Return the subjects list in an Ok wrapper
+    # Flush last line
+    aLine = Line(speaker, utteranceList.copy())
+    transcript.elements.append(aLine)
+    return transcript
 
 
 # Defining the function that prints the Subject linked-list to human-readable text
-def subjects_to_str(lines: List) -> str:
+def transcript_to_str(transcript: Transcript) -> str:
     # Initialize an empty string to store the text
-    text: str = ""
+    outText: str = ""
     lastUtter: Utterance = None
 
-    for line in lines:
-        text += f"{line.speaker}: "
-        for utterance in line.utterances:
-            match utterance:
-                case Word(word):
-                    # If hard punc before word, add a space before this word
-                    if isinstance(lastUtter, PunctuationHard):
-                        text += f"{word}"
-                    # If comma before word, add a space before this word
-                    elif (
-                        isinstance(lastUtter, PunctuationSoft)
-                        and lastUtter.symbol == ","
-                    ):
-                        text += f" {word}"
-                    # If word before this word, add a space before this word
-                    elif isinstance(lastUtter, Word):
-                        text += f" {word}"
-                    # Otherwise do nothing
-                    else:
-                        text += f"{word}"
-                case PunctuationHard(symbol):
-                    text += f"{symbol} "
-                case PunctuationSoft(symbol):
-                    text += f"{symbol}"
-                case Pause(duration):
-                    text += f" <{duration}> "
-            lastUtter = utterance
-        text += "\n"
-        lastUtter = line
-    return text
+    for ele in transcript.elements:
+        match ele:
+            case Time(time):
+                outText += f"{time}\n"
+            case Line(speaker, utterances):
+                outText += f"{speaker}: "
+                for utterance in utterances:
+                    match utterance:
+                        case Word(word):
+                            # If hard punc before word, add a space before this word
+                            if isinstance(lastUtter, PunctuationHard):
+                                outText += f"{word}"
+                            # If comma before word, add a space before this word
+                            elif (
+                                isinstance(lastUtter, PunctuationSoft)
+                                and lastUtter.symbol == ","
+                            ):
+                                outText += f" {word}"
+                            # If word before this word, add a space before this word
+                            elif isinstance(lastUtter, Word):
+                                outText += f" {word}"
+                            # Otherwise do nothing
+                            else:
+                                outText += f"{word}"
+                        case PunctuationHard(symbol):
+                            outText += f"{symbol} "
+                        case PunctuationSoft(symbol):
+                            outText += f"{symbol}"
+                        case Pause(duration):
+                            outText += f" <{duration}> "
+                    lastUtter = utterance
+                outText += "\n\n"
+                # lastUtter = line
+    return outText
 
 
 # Define function to return a dict of wordCounts, given a speaker
-def count_words(lines: Line, targetSpeaker: str) -> dict:
+def count_words(transcript: Transcript, targetSpeaker: str) -> dict:
     wordCount = defaultdict(int)
-    for line in lines:
-        # if guard
-        if line.speaker != targetSpeaker:
+    for ele in transcript.elements:
+        # if guards
+        if not isinstance(ele, Line):
             continue
-        for utterance in line.utterances:
+        if ele.speaker != targetSpeaker:
+            continue
+
+        for utterance in ele.utterances:
             match utterance:
                 case Word(word):
                     # convert word to lower-case and inc word counter
@@ -204,7 +224,7 @@ if __name__ == "__main__":
         # outfile = f + "_formatted" + e
         data = infile.read()
         transcript = parse_transcript(data)
-        print(subjects_to_str(transcript))
+        print(transcript_to_str(transcript))
         s = args.count_words_of
         if s:
             print(count_words(transcript, s))

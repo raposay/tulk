@@ -1,5 +1,4 @@
-from tulk import parse_transcript, subjects_to_str, count_words
-from tulk import Result, Ok, Err
+import tulk
 
 # Test the functions
 # Defining the transcript
@@ -14,10 +13,7 @@ transcript = """
 
             B: Where?? Egg-salad and ham!!
 """
-result = parse_transcript(transcript)
-if isinstance(result, Ok):
-    print(subjects_to_str(result.value))
-else:
-    print(result)
-print(count_words(result.value, "A"))
-print(count_words(result.value, "B"))
+t = tulk.parse_transcript(transcript)
+print(tulk.transcript_to_str(t))
+print(tulk.count_words(t, "A"))
+print(tulk.count_words(t, "B"))

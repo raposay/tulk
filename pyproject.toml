@@ -1,0 +1,6 @@
+[project]
+name = "tulk"
+version = "2023.12.8"
+authors = [
+  {name = "Ian Harker"},
+]

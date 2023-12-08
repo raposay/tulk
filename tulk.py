@@ -50,6 +50,9 @@ class Line:
     speaker: str
     utterances: List[Utterance]
 
+    def __copy__(self):
+        return Line(self.speaker, self.utterances.copy())
+
 
 @dataclass
 class Time:
@@ -64,27 +67,54 @@ class Transcript:
     elements: List[Element]
 
 
+# static variables
+# default regex pattern
+defaultPattern = re.compile(
+    r"""
+(?P<speaker>^[a-zA-Z]+)(?=:)|
+(?P<time>\d{1,2}:\d{1,2})|
+(?<=<)(?P<pause>\d\.?\d*)(?=>)|
+(?P<word>\w+[-'’:+]?\w*)|
+(?P<puncHard>[.?!])|
+(?P<puncSoft>[’'\-\",])
+    """,
+    re.VERBOSE | re.MULTILINE,
+)
+# Define a regex pattern to parse transcriptions
+defaultPattern = re.compile(
+    r"""
+    (?P<speaker>^[a-zA-Z]+)   # Match the speaker name at the beginning of a line (named group)
+    (?=:)                     # Followed by a colon (positive lookahead)
+    |                         # OR (alternation)
+    (?P<time>\d{1,2}:\d{1,2}) # Match the time in hh:mm format (named group)
+    |                         # OR (alternation)
+    (?<=<)                    # Preceded by a left angle bracket '<' (positive lookbehind)
+    (?P<pause>\d\.?\d*)       # Match the pause duration in seconds (named group)
+    (?=>)                     # Followed by a right angle bracket '>' (positive lookahead)
+    |                         # OR (alternation)
+    (?P<word>\w+[-'’:+]?\w*)  # Match a word with optional dash, hyphen, apostrophe, colon, or plus (named group)
+    |                         # OR (alternation)
+    (?P<puncHard>[.?!])       # Match a hard punctuation mark (named group)
+    |                         # OR (alternation)
+    (?P<puncSoft>[’'\-\",])   # Match a soft punctuation mark (named group)
+    """,
+    re.VERBOSE | re.MULTILINE,  # Use verbose and multiline flags (flags)
+)
+# The verbose flag lets us use whitespace and comments inside of our pattern.
+# The multiline flag lets us match multiline strings. For example, the '^' char is used to match at the beginning of a line.
+
+
 # Defining the function that returns a linked-list of Subject types
-def parse_transcript(inStr: str) -> List[Line]:
+def parse_transcript(inStr: str, regexPattern=defaultPattern) -> List[Line]:
     # default verbose
     # check if running from main or import
     if "args" not in globals():
         verbose = False
     else:
         verbose = args.verbose
+
     # Defining the regex pattern for tokenizing the transcript
-    # https://regex101.com/r/gs5Y38/1
-    pattern = re.compile(
-        r"""
-    (?P<speaker>^[a-zA-Z]+)(?=:)|
-    (?P<time>\d{1,2}:\d{1,2})|
-    (?<=<)(?P<pause>\d\.?\d*)(?=>)|
-    (?P<word>\w+[-'’:+]?\w*)|
-    (?P<puncHard>[.?!])|
-    (?P<puncSoft>[’'\-\",])
-        """,
-        re.VERBOSE | re.MULTILINE,
-    )
+    pattern = re.compile(regexPattern)
 
     # Initialize empty transcript object that should contain only Element types (either Line or Time)
     transcript = Transcript([])
@@ -205,6 +235,76 @@ def count_words(transcript: Transcript, targetSpeaker: str) -> dict:
     return dict(wordCount)
 
 
+# Define methods for arbitrary input
+# Define a generator function to iterate through the words of an arbitrary string
+# For ex: whisperAI output
+def raw_string_iter(inStr, participants, regexPattern=defaultPattern) -> Utterance:
+    # Defining the regex pattern for tokenizing the transcript
+    pattern = re.compile(regexPattern)
+
+    # Iterate over the matches of the pattern in the transcript
+    # for match in pattern.finditer(transcript):
+    matches = pattern.finditer(inStr)
+    for m in matches:
+        match m.lastgroup:
+            case "word":
+                yield Word(m.group())
+            case "puncHard":
+                yield PunctuationHard(m.group())
+            case "puncSoft":
+                yield PunctuationSoft(m.group())
+
+
+def construct_transcript(inStr, participants, regexPattern=defaultPattern):
+    # Defining the regex pattern for tokenizing the transcript
+    pattern = re.compile(regexPattern)
+
+    # Initialize empty transcript object that should contain only Element types (either Line or Time)
+    transcript = Transcript([])
+
+    # Iterate over the matches of the pattern in the transcript
+    # for match in pattern.finditer(transcript):
+    # speaker: str = None
+    utteranceList = []
+
+    # Init currentLine with Null Speaker and empty list of Utterance objects
+    currentLine = Line(None, [])
+    # Build a sentence, ending when we find a PunctuationHard Object
+    for utter in raw_string_iter(inStr, participants, pattern):
+        match utter:
+            case Word(m):
+                utteranceList.append(m)
+            case PunctuationHard(m):
+                utteranceList.append(m)
+                # end the utteranceList, ask user to input speaker
+                speaker = ""
+                while not speaker:
+                    print("Sentence found, who is the speaker?")
+                    print(f"Available speakers: {participants}")
+                    print(utteranceList)
+                    speaker = input(">")
+                    if speaker == "":
+                        print("Invalid input!")
+
+                # edit currentLine then append Transcript
+                currentLine.speaker = speaker
+                currentLine.utterances = utteranceList.copy()
+                utteranceList.clear()
+
+                transcript.elements.append(currentLine)
+                currentLine.utterances.clear()
+            case PunctuationSoft(m):
+                utteranceList.append(m)
+            case Pause(m):
+                utteranceList.append(m)
+
+    # Check if the Transcript is empty (if guard)
+    if len(transcript.elements) == 0:
+        # Return an error message in a Err wrapper
+        raise Exception("No lines found in input.")
+    return transcript
+
+
 if __name__ == "__main__":
     # parse args
     parser = argparse.ArgumentParser(
@@ -215,7 +315,10 @@ if __name__ == "__main__":
     # parser.add_argument('filename(s)')# positional argument
     parser.add_argument("-v", "--verbose", action="store_true")  # on/off flag
     parser.add_argument("-c", "--count_words_of", type=str)  # pass in speaker name here
-    parser.add_argument("file", type=argparse.FileType("r"), nargs="+")
+    parser.add_argument("-p", "--participants", nargs="*", type=str)
+    parser.add_argument(
+        "-f", "--file", type=argparse.FileType("r"), nargs="+", required=True
+    )
     args = parser.parse_args()
 
     # open file(s)
@@ -223,8 +326,13 @@ if __name__ == "__main__":
         # f, e = os.path.splitext(infile)
         # outfile = f + "_formatted" + e
         data = infile.read()
-        transcript = parse_transcript(data)
-        print(transcript_to_str(transcript))
         s = args.count_words_of
         if s:
+            transcript = parse_transcript(data)
+            print(transcript_to_str(transcript))
             print(count_words(transcript, s))
+        p = args.participants
+        if p:
+            transcript = construct_transcript(data, p, defaultPattern)
+            # print(transcript)
+            print(transcript_to_str(transcript))

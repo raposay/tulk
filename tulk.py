@@ -104,8 +104,7 @@ defaultPattern = re.compile(
 # The multiline flag lets us match multiline strings. For example, the '^' char is used to match at the beginning of a line.
 
 
-# Defining the function that returns a linked-list of Subject types
-def parse_transcript(inStr: str, regexPattern=defaultPattern) -> List[Line]:
+def parse_transcript(inStr: str, regexPattern=defaultPattern) -> Transcript:
     # default verbose
     # check if running from main or import
     if "args" not in globals():
@@ -174,7 +173,6 @@ def parse_transcript(inStr: str, regexPattern=defaultPattern) -> List[Line]:
     return transcript
 
 
-# Defining the function that prints the Subject linked-list to human-readable text
 def transcript_to_str(transcript: Transcript) -> str:
     # Initialize an empty string to store the text
     outText: str = ""
@@ -216,8 +214,8 @@ def transcript_to_str(transcript: Transcript) -> str:
     return outText
 
 
-# Define function to return a dict of wordCounts, given a speaker
 def count_words(transcript: Transcript, targetSpeaker: str) -> dict:
+    # Define function to return a dict of wordCounts for a specific speaker, given a transcript with the respective speaker
     wordCount = defaultdict(int)
     for ele in transcript.elements:
         # if guards
@@ -236,9 +234,12 @@ def count_words(transcript: Transcript, targetSpeaker: str) -> dict:
 
 
 # Define methods for arbitrary input
-# Define a generator function to iterate through the words of an arbitrary string
-# For ex: whisperAI output
+
+
 def raw_string_iter(inStr, participants, regexPattern=defaultPattern) -> Utterance:
+    # Define a generator function to iterate through the words of an arbitrary string
+    # For ex: whisperAI output
+
     # Defining the regex pattern for tokenizing the transcript
     pattern = re.compile(regexPattern)
 

@@ -34,11 +34,11 @@ Included types and datatypes are as follows:
     - `TimeStamp`: a dataclass that contains a timestamp string that represents the moment-in-time of the transcript in hh:mm format.
     - `Line`: a dataclass that contains a speaker name(str) and a list of strictly Utterance objects.
         -`Utterance`: a dataclass that strictly is either a Word, Pause, or a Punctuation.
-        - `Word`: a dataclass that contains a word string.
-		    - `Pause`: a dataclass that contains a duration float that represents the pause length in seconds.
-        - `Punctuation`: a dataclass that is strictly either a PunctuationHard or a PunctuationSoft type.
-		      - `PunctuationHard`: a dataclass that contains a symbol string that ends a sentence, such as “.”, “!”, or “?”.
-		      - `PunctuationSoft`: a dataclass that contains a symbol string that does not end a sentence, such as “,”, “-”, or “'”.
+          - `Word`: a dataclass that contains a word string.
+          - `Pause`: a dataclass that contains a duration float that represents the pause length in seconds.
+          - `Punctuation`: a dataclass that is strictly either a PunctuationHard or a PunctuationSoft type.
+            - `PunctuationHard`: a dataclass that contains a symbol string that ends a sentence, such as “.”, “!”, or “?”.
+            - `PunctuationSoft`: a dataclass that contains a symbol string that does not end a sentence, such as “,”, “-”, or “'”.
 	
 The default regex pattern defaultPattern is defined in the module and can handle most common transcript formats.
 You can also define your own regex pattern if you need to parse a different format.

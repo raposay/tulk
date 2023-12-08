@@ -50,9 +50,6 @@ class Line:
     speaker: str
     utterances: List[Utterance]
 
-    def __copy__(self):
-        return Line(self.speaker, self.utterances.copy())
-
 
 @dataclass
 class Time:

@@ -21,10 +21,22 @@ The options you can use are:
 - `-v` or `--verbose`: Print verbose output, such as the parsed transcript and the analysis results.
 - `-c` or `--count_words_of`: Specify the speaker name for which you want to get the word count.
 - `-p` or `--participants`: Specify the names of the participants in the transcript. The names should be separated by spaces.
+- `-o` or `--output`: Specify output filename. If output is undefined tulk will print to the terminal
 
 For example, to analyze word count for Alice, from a transcript file called example.txt, you can run:
-
 `tulk -c Alice -f example.txt`
+
+Output to file output.txt.
+`tulk -c Alice -f example.txt -o output.txt`
+
+If you have unformatted text (WhisperAI output for ex.) you can use the `-p` flag.
+`tulk -p A B C -f example.txt -o output.txt`
+
+With this, tulk will begin an interactive mode where you can input a participant name for every sentence found.
+In this example, the only available speakers that are able to be input is A, B, or C.
+
+Long names can be expressed too.
+`tulk -p Mari James -f example.txt -o output.txt`
 
 ## Documentation 
 Included types and datatypes are as follows:
@@ -37,8 +49,8 @@ Included types and datatypes are as follows:
           - `Word`: a dataclass that contains a word string.
           - `Pause`: a dataclass that contains a duration float that represents the pause length in seconds.
           - `Punctuation`: a dataclass that is strictly either a PunctuationHard or a PunctuationSoft type.
-            - `PunctuationHard`: a dataclass that contains a symbol string that ends a sentence, such as “.”, “!”, or “?”.
-            - `PunctuationSoft`: a dataclass that contains a symbol string that does not end a sentence, such as “,”, “-”, or “'”.
+            - `PunctuationHard`: a dataclass that contains a symbol string that ends a sentence, such as '.' '!' or '?'.
+            - `PunctuationSoft`: a dataclass that contains a symbol string that does not end a sentence, such as ',' or '-'.
 	
 The default regex pattern defaultPattern is defined in the module and can handle most common transcript formats.
 You can also define your own regex pattern if you need to parse a different format.

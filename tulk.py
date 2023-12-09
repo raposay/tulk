@@ -1,8 +1,9 @@
 # Importing the required modules
 from dataclasses import dataclass
-from typing import Union, List, Optional, assert_never
+from typing import Union, List, Optional, Generator, Sequence, assert_never
 from collections import defaultdict
 import os
+import sys
 import re
 import argparse
 
@@ -12,7 +13,7 @@ import argparse
 class Word:
     word: str
 
-    def __str__(self):
+    def __repr__(self):
         return f"{self.word}"
 
 
@@ -20,13 +21,16 @@ class Word:
 class Pause:
     duration: float
 
+    def __repr__(self):
+        return f"<{self.duration}>"
+
 
 # If symbol ends a sentence: ! or ? or .
 @dataclass
 class PunctuationHard:
     symbol: str
 
-    def __str__(self):
+    def __repr__(self):
         return f"{self.symbol}"
 
 
@@ -34,7 +38,7 @@ class PunctuationHard:
 class PunctuationSoft:
     symbol: str
 
-    def __str__(self):
+    def __repr__(self):
         return f"{self.symbol}"
 
 
@@ -50,6 +54,9 @@ class Line:
     speaker: str
     utterances: List[Utterance]
 
+    def copy(self):
+        return Line(self.speaker, self.utterances.copy())
+
 
 @dataclass
 class Time:
@@ -64,19 +71,6 @@ class Transcript:
     elements: List[Element]
 
 
-# static variables
-# default regex pattern
-defaultPattern = re.compile(
-    r"""
-(?P<speaker>^[a-zA-Z]+)(?=:)|
-(?P<time>\d{1,2}:\d{1,2})|
-(?<=<)(?P<pause>\d\.?\d*)(?=>)|
-(?P<word>\w+[-'’:+]?\w*)|
-(?P<puncHard>[.?!])|
-(?P<puncSoft>[’'\-\",])
-    """,
-    re.VERBOSE | re.MULTILINE,
-)
 # Define a regex pattern to parse transcriptions
 defaultPattern = re.compile(
     r"""
@@ -117,7 +111,7 @@ def parse_transcript(inStr: str, regexPattern=defaultPattern) -> Transcript:
 
     # Iterate over the matches of the pattern in the transcript
     # for match in pattern.finditer(transcript):
-    speaker: str = None
+    speaker: str = ""
     utteranceList = []
     matches = pattern.finditer(inStr)
     for m in matches:
@@ -173,7 +167,7 @@ def parse_transcript(inStr: str, regexPattern=defaultPattern) -> Transcript:
 def transcript_to_str(transcript: Transcript) -> str:
     # Initialize an empty string to store the text
     outText: str = ""
-    lastUtter: Utterance = None
+    lastUtter: Optional[Utterance] = None
 
     for ele in transcript.elements:
         match ele:
@@ -233,7 +227,9 @@ def count_words(transcript: Transcript, targetSpeaker: str) -> dict:
 # Define methods for arbitrary input
 
 
-def raw_string_iter(inStr, participants, regexPattern=defaultPattern) -> Utterance:
+def raw_string_iter(
+    inStr, participants, regexPattern=defaultPattern
+) -> Generator[Utterance, None, None]:
     # Define a generator function to iterate through the words of an arbitrary string
     # For ex: whisperAI output
 
@@ -254,6 +250,10 @@ def raw_string_iter(inStr, participants, regexPattern=defaultPattern) -> Utteran
 
 
 def construct_transcript(inStr, participants, regexPattern=defaultPattern):
+    if "args" not in globals():
+        verbose = False
+    else:
+        verbose = args.verbose
     # Defining the regex pattern for tokenizing the transcript
     pattern = re.compile(regexPattern)
 
@@ -263,38 +263,51 @@ def construct_transcript(inStr, participants, regexPattern=defaultPattern):
     # Iterate over the matches of the pattern in the transcript
     # for match in pattern.finditer(transcript):
     # speaker: str = None
-    utteranceList = []
+    utteranceList: List[Utterance] = []
 
-    # Init currentLine with Null Speaker and empty list of Utterance objects
-    currentLine = Line(None, [])
+    prevSpeaker: str = ""
+
+    # Init currentLine with empty speaker and empty list of Utterance objects
+    currentLine = Line("", [])
     # Build a sentence, ending when we find a PunctuationHard Object
     for utter in raw_string_iter(inStr, participants, pattern):
         match utter:
             case Word(m):
-                utteranceList.append(m)
+                if verbose:
+                    print(f"Appending {m} to {utteranceList}")
+                utteranceList.append(Word(m))
             case PunctuationHard(m):
-                utteranceList.append(m)
+                if verbose:
+                    print(f"Appending {m} to {utteranceList}")
+                utteranceList.append(PunctuationHard(m))
                 # end the utteranceList, ask user to input speaker
                 speaker = ""
-                while not speaker:
+                while speaker not in participants:
                     print("Sentence found, who is the speaker?")
                     print(f"Available speakers: {participants}")
                     print(utteranceList)
-                    speaker = input(">")
-                    if speaker == "":
+                    speaker = input(">").upper()
+                    if speaker not in participants:
                         print("Invalid input!")
 
-                # edit currentLine then append Transcript
-                currentLine.speaker = speaker
-                currentLine.utterances = utteranceList.copy()
+                currentLine.utterances += utteranceList.copy()
                 utteranceList.clear()
-
-                transcript.elements.append(currentLine)
-                currentLine.utterances.clear()
+                # if current speaker is not same as last speaker, do not append to transcript
+                # if current speaker is the same as last speaker, merge lines
+                if speaker != prevSpeaker:
+                    # edit currentLine then append Transcript
+                    currentLine.speaker = speaker
+                    transcript.elements.append(currentLine.copy())
+                    currentLine.utterances.clear()
+                prevSpeaker = speaker
             case PunctuationSoft(m):
-                utteranceList.append(m)
+                if verbose:
+                    print(f"Appending {m} to {utteranceList}")
+                utteranceList.append(PunctuationSoft(m))
             case Pause(m):
-                utteranceList.append(m)
+                if verbose:
+                    print(f"Appending {m} to {utteranceList}")
+                utteranceList.append(Pause(m))
 
     # Check if the Transcript is empty (if guard)
     if len(transcript.elements) == 0:
@@ -314,10 +327,16 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action="store_true")  # on/off flag
     parser.add_argument("-c", "--count_words_of", type=str)  # pass in speaker name here
     parser.add_argument("-p", "--participants", nargs="*", type=str)
+    parser.add_argument("-o", "--output", type=argparse.FileType("a"))
     parser.add_argument(
         "-f", "--file", type=argparse.FileType("r"), nargs="+", required=True
     )
     args = parser.parse_args()
+
+    if args.output:
+        out = args.output
+    else:
+        out = sys.stdout
 
     # open file(s)
     for infile in args.file:
@@ -327,10 +346,12 @@ if __name__ == "__main__":
         s = args.count_words_of
         if s:
             transcript = parse_transcript(data)
-            print(transcript_to_str(transcript))
-            print(count_words(transcript, s))
+            out.write(transcript_to_str(transcript))
+            out.write(count_words(transcript, s))
         p = args.participants
+        # capitalize all letters of participants
+        p = [name.upper() for name in p]
         if p:
             transcript = construct_transcript(data, p, defaultPattern)
             # print(transcript)
-            print(transcript_to_str(transcript))
+            out.write(transcript_to_str(transcript))

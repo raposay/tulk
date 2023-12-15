@@ -67,6 +67,16 @@ If you want to use Tulk as a module in your own python code, you can import it a
 
 - `construct_transcript(inStr: str, participants: list[str], regexPattern=DEFAULT_PATTERN) -> Transcript`: takes a string inStr that represents an unorganized transcript, a list of strings participants that represents the names of the participants in the transcript, and a regex pattern regexPattern that defines how to parse the words and punctuation in the transcript. It returns a Transcript object that contains Line objects with speaker names assigned based on interactive user input.
 
+## Project Design Goals
+- Maintain static typing
+  - Static typing notation has no effect on how the program runs.
+  - Verify correct typing with pyright before shipping new releases.
+  - Verbosity should help readability.
+
+## TODO
+- Unicode support
+- Auto sentence speaker evaluation(?)
+
 ## License Acknowledgement
 
 Tulk is licensed under the MIT License. See the LICENSE file for more details.

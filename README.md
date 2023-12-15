@@ -72,6 +72,10 @@ If you want to use Tulk as a module in your own python code, you can import it a
   - Static typing notation has no effect on how the program runs.
   - Verify correct typing with pyright before shipping new releases.
   - Verbosity should help readability.
+- Functional paradigm
+  - Avoid using global variables, none if possible.
+    - Functions should only work within their scope to avoid bugs.
+  - Dataclasses/Union types for making tulk more flexible to new features.
 
 ## TODO
 - Unicode support

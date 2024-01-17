@@ -266,19 +266,20 @@ def construct_transcript(inStr, participants, regexPattern=defaultPattern):
     utteranceList: List[Utterance] = []
 
     prevSpeaker: str = ""
-    count: int = 0
+    #count: int = 0
 
     # Init currentLine with empty speaker and empty list of Utterance objects
+    historicalLine = Line("", [])
     currentLine = Line("", [])
     # Build a sentence, ending when we find a PunctuationHard Object
     for utter in raw_string_iter(inStr, participants, pattern):
         match utter:
             case Word(m):
-                # if verbose:
+                #if verbose:
                 #    print(f"Appending {m} to {utteranceList}")
                 utteranceList.append(Word(m))
             case PunctuationHard(m):
-                # if verbose:
+                #if verbose:
                 #    print(f"Appending {m} to {utteranceList}")
                 utteranceList.append(PunctuationHard(m))
                 # end the utteranceList, ask user to input speaker
@@ -291,8 +292,8 @@ def construct_transcript(inStr, participants, regexPattern=defaultPattern):
                     if speaker not in participants:
                         print("Invalid input!")
 
-                # should run once
                 # 2nd line speaker is not same as 1st, then flush 1st line
+                '''
                 if speaker != prevSpeaker and count == 1:
                     # Init currentLine with empty speaker and empty list of Utterance objects
                     currentLine = Line("", [])
@@ -303,25 +304,49 @@ def construct_transcript(inStr, participants, regexPattern=defaultPattern):
                     if verbose:
                         print(transcript.elements)
                         print(f"SPEAKER {speaker} -> transcript")
-
+                '''
+                        
+                
                 currentLine.utterances += utteranceList.copy()
                 utteranceList.clear()
 
-                # if current speaker is not same as last speaker, do not append to transcript
+                if speaker == prevSpeaker:
+                    historicalLine.utterances += currentLine.utterances.copy()
+                    currentLine.utterances.clear()
+
                 # if current speaker is the same as last speaker, merge lines
-                if speaker != prevSpeaker and count != 0:
-                    # edit currentLine then append Transcript
+                if speaker != prevSpeaker:
+                    if not prevSpeaker:
+                        prevSpeaker = speaker
+                        historicalLine.utterances += currentLine.utterances.copy()
+                        currentLine.utterances.clear()
+                        if verbose:
+                            print("NO PREVSPEAKER, CONTINUE")
+                            print(f"HIST {historicalLine.utterances}")
+                        continue
+                    if verbose:
+                        print("FLUSH")
+                    # assign prevSpeaker to historicalLine then append new currentLine with
+                    # current speaker
+                    if historicalLine.utterances:
+                        if not transcript.elements:
+                            historicalLine.speaker = prevSpeaker
+                            transcript.elements.append(historicalLine.copy())
+                        else:
+                            transcript.elements[-1].utterances += historicalLine.utterances.copy()
                     currentLine.speaker = speaker
                     transcript.elements.append(currentLine.copy())
                     currentLine.utterances.clear()
+                    historicalLine.utterances.clear()
                     if verbose:
-                        print(transcript.elements)
+                        print(f"HIST {historicalLine.utterances}")
+                        print(f"TRANSCRIPT {transcript.elements}")
                         print(f"SPEAKER {speaker} -> transcript")
                 prevSpeaker = speaker
                 if verbose:
-                    print(f"count = {count}")
+                    #print(f"count = {count}")
                     print(f"prevSpeaker = {speaker}")
-                count += 1
+                #count += 1
             case PunctuationSoft(m):
                 # if verbose:
                 #    print(f"Appending {m} to {utteranceList}")
@@ -331,6 +356,13 @@ def construct_transcript(inStr, participants, regexPattern=defaultPattern):
                 #    print(f"Appending {m} to {utteranceList}")
                 utteranceList.append(Pause(m))
 
+    # If there are still left over utterances, flush
+    if historicalLine.utterances:
+        if verbose:
+            print("FLUSH REST OF UTTERANCES")
+            print(f"HIST {historicalLine.utterances}")
+            print(f"LASTTRANS {transcript.elements[-1]}")
+        transcript.elements[-1].utterances += historicalLine.utterances.copy()
     # Check if the Transcript is empty
     if len(transcript.elements) == 0:
         # Return an error message in a Err wrapper
